@@ -1,0 +1,1459 @@
+{
+  "info": {
+    "name": "BooKing Lab — course",
+    "description": "Happy paths of the course: reviews, promo codes, favorites, the manager area and the mailbox. Run it in order (Run collection) or with Newman:\n\n    npx newman run postman/booking-lab-course.postman_collection.json -e postman/localhost.postman_environment.json\n\nEvery run creates its own test user and deletes its data at the end.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Before every request: a stay 50–52 days from today, so dates never go stale.",
+          "const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);",
+          "pm.collectionVariables.set('check_in', day(50));",
+          "pm.collectionVariables.set('check_out', day(52));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "email",
+      "value": ""
+    },
+    {
+      "key": "user_password",
+      "value": ""
+    },
+    {
+      "key": "new_password",
+      "value": ""
+    },
+    {
+      "key": "check_in",
+      "value": ""
+    },
+    {
+      "key": "check_out",
+      "value": ""
+    },
+    {
+      "key": "review_hotel_id",
+      "value": ""
+    },
+    {
+      "key": "completed_booking_id",
+      "value": ""
+    },
+    {
+      "key": "review_id",
+      "value": ""
+    },
+    {
+      "key": "promo_code",
+      "value": ""
+    },
+    {
+      "key": "hotel_id",
+      "value": ""
+    },
+    {
+      "key": "room_type_id",
+      "value": ""
+    },
+    {
+      "key": "my_hotel_id",
+      "value": ""
+    },
+    {
+      "key": "to_confirm_id",
+      "value": ""
+    },
+    {
+      "key": "arriving_id",
+      "value": ""
+    },
+    {
+      "key": "new_room_type_id",
+      "value": ""
+    },
+    {
+      "key": "reset_code",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0 Setup",
+      "description": "Wake the server, then create a verified test user for this run.",
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "Cold start (REQ-OPS-003): the cloud copy sleeps after 15 minutes without requests. YOUR TASK: add a pre-request script here that asks /health every 5 seconds, for at most 120 seconds, before the run goes on."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('the database is up', () => pm.expect(pm.response.json().db).to.eql('ok'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create a test user",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/test/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "test",
+                "users"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "POST /test/users: a verified user with a random autotest+… email (REQ-TEST-004)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('token', body.access_token);",
+                  "pm.collectionVariables.set('email', body.user.email);",
+                  "pm.collectionVariables.set('user_password', body.password);",
+                  "pm.collectionVariables.set('new_password', 'N3w' + Math.random().toString(36).slice(2, 8) + '!');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 Reviews",
+      "description": "Requirements 3.4: write a review of a completed stay, read it, edit it.",
+      "item": [
+        {
+          "name": "Seed: a user with bookings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/test/seed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "test",
+                "seed"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scenario\": \"user_with_bookings\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "POST /test/seed creates your own hotel and one booking of yours in every status."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const created = pm.response.json().created;",
+                  "pm.collectionVariables.set('review_hotel_id', created.hotel_id);",
+                  "pm.collectionVariables.set('completed_booking_id', created.bookings.completed);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Write a review",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/hotels/{{review_hotel_id}}/reviews",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "hotels",
+                "{{review_hotel_id}}",
+                "reviews"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"booking_id\": {{completed_booking_id}},\n  \"rating\": 5,\n  \"text\": \"Quiet room, great breakfast and very friendly staff.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('matches the review schema', () => pm.response.to.have.jsonSchema({",
+                  "  type: 'object',",
+                  "  required: ['id', 'hotel_id', 'author', 'rating', 'text', 'created_at', 'editable_until'],",
+                  "  properties: { id: { type: 'integer' }, rating: { type: 'integer', minimum: 1, maximum: 5 },",
+                  "    text: { type: 'string' } },",
+                  "}));",
+                  "pm.test('rating 5', () => pm.expect(pm.response.json().rating).to.eql(5));",
+                  "pm.collectionVariables.set('review_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The hotel's reviews list it",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/hotels/{{review_hotel_id}}/reviews",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "hotels",
+                "{{review_hotel_id}}",
+                "reviews"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map((r) => r.id);",
+                  "pm.test('my review is listed', () => pm.expect(ids).to.include(Number(pm.collectionVariables.get('review_id'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change my review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/reviews/{{review_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "reviews",
+                "{{review_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A review can be changed within 24 hours of writing it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('rating is now 4', () => pm.expect(pm.response.json().rating).to.eql(4));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 Promo codes",
+      "description": "Requirements 3.3: check a promo code and see its discount in a quote.",
+      "item": [
+        {
+          "name": "Seed: an active promo code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/test/seed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "test",
+                "seed"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scenario\": \"active_promo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('promo_code', pm.response.json().created.promo_code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check the promo code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/promo-codes/{{promo_code}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "promo-codes",
+                "{{promo_code}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the promo schema', () => pm.response.to.have.jsonSchema({",
+                  "  type: 'object', required: ['code', 'kind', 'value', 'valid_from', 'valid_to'],",
+                  "  properties: { code: { type: 'string' }, kind: { type: 'string' } },",
+                  "}));",
+                  "pm.test('the same code', () => pm.expect(pm.response.json().code).to.eql(pm.collectionVariables.get('promo_code')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Find a room for the quote",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/hotels?city=Jerusalem&check_in={{check_in}}&check_out={{check_out}}&adults=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "hotels"
+              ],
+              "query": [
+                {
+                  "key": "city",
+                  "value": "Jerusalem"
+                },
+                {
+                  "key": "check_in",
+                  "value": "{{check_in}}"
+                },
+                {
+                  "key": "check_out",
+                  "value": "{{check_out}}"
+                },
+                {
+                  "key": "adults",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const hotel = pm.response.json().items[0];",
+                  "pm.test('a hotel has free rooms', () => pm.expect(hotel).to.be.an('object'));",
+                  "pm.collectionVariables.set('hotel_id', hotel.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Room types of that hotel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/hotels/{{hotel_id}}/availability?check_in={{check_in}}&check_out={{check_out}}&adults=2",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "hotels",
+                "{{hotel_id}}",
+                "availability"
+              ],
+              "query": [
+                {
+                  "key": "check_in",
+                  "value": "{{check_in}}"
+                },
+                {
+                  "key": "check_out",
+                  "value": "{{check_out}}"
+                },
+                {
+                  "key": "adults",
+                  "value": "2"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const room = pm.response.json().room_types.find((r) => r.free_rooms > 0 && r.fits_guests);",
+                  "pm.test('a room type fits two adults', () => pm.expect(room).to.be.an('object'));",
+                  "pm.collectionVariables.set('room_type_id', room.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quote with the promo code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/quote",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"room_type_id\": {{room_type_id}},\n  \"check_in\": \"{{check_in}}\",\n  \"check_out\": \"{{check_out}}\",\n  \"adults\": 2,\n  \"promo_code\": \"{{promo_code}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the quote schema', () => pm.response.to.have.jsonSchema({",
+                  "  type: 'object', required: ['subtotal', 'discount', 'tax', 'total', 'currency'],",
+                  "  properties: { subtotal: { type: 'string', pattern: '^-?\\\\d+\\\\.\\\\d{2}$' }, discount: { type: 'string', pattern: '^-?\\\\d+\\\\.\\\\d{2}$' }, tax: { type: 'string', pattern: '^-?\\\\d+\\\\.\\\\d{2}$' }, total: { type: 'string', pattern: '^-?\\\\d+\\\\.\\\\d{2}$' } },",
+                  "}));",
+                  "pm.test('the promo code gives a discount', () => pm.expect(Number(pm.response.json().discount)).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 Favorites",
+      "description": "Requirements 3.2: save a hotel, see it in favorites, remove it.",
+      "item": [
+        {
+          "name": "Add the hotel to favorites",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/favorites/{{hotel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "favorites",
+                "{{hotel_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Favorites list it",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/favorites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "favorites"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map((h) => h.id);",
+                  "pm.test('the hotel is in favorites', () => pm.expect(ids).to.include(Number(pm.collectionVariables.get('hotel_id'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Remove it from favorites",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/favorites/{{hotel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "favorites",
+                "{{hotel_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Favorites no longer list it",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/favorites",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "favorites"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map((h) => h.id);",
+                  "pm.test('the hotel is gone', () => pm.expect(ids).to.not.include(Number(pm.collectionVariables.get('hotel_id'))));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 Manager area",
+      "description": "Requirements 3.5: a manager's hotel, room types, prices, bookings and reports.",
+      "item": [
+        {
+          "name": "Seed: a manager with a hotel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/test/seed",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "test",
+                "seed"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scenario\": \"manager_with_hotel\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Makes you a manager with your own hotel, a booking to confirm and a guest arriving today."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const created = pm.response.json().created;",
+                  "pm.collectionVariables.set('my_hotel_id', created.hotel_id);",
+                  "pm.collectionVariables.set('to_confirm_id', created.bookings.to_confirm);",
+                  "pm.collectionVariables.set('arriving_id', created.bookings.arriving_today);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "My hotels",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/manager/hotels",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "manager",
+                "hotels"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map((h) => h.id);",
+                  "pm.test('my hotel is listed', () => pm.expect(ids).to.include(Number(pm.collectionVariables.get('my_hotel_id'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a room type",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/hotels/{{my_hotel_id}}/room-types",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "hotels",
+                "{{my_hotel_id}}",
+                "room-types"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sea View Double\",\n  \"capacity\": 2,\n  \"base_price\": \"450.00\",\n  \"room_count\": 6\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "pm.test('price is a money string', () => pm.expect(pm.response.json().base_price).to.eql('450.00'));",
+                  "pm.collectionVariables.set('new_room_type_id', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set prices for two dates",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/room-types/{{new_room_type_id}}/rates",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "room-types",
+                "{{new_room_type_id}}",
+                "rates"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rates\": [\n    {\n      \"date\": \"{{check_in}}\",\n      \"price\": \"520.00\"\n    },\n    {\n      \"date\": \"{{check_out}}\",\n      \"price\": \"560.00\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bookings in my hotel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/manager/bookings?hotel_id={{my_hotel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "manager",
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "hotel_id",
+                  "value": "{{my_hotel_id}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const ids = pm.response.json().items.map((b) => b.id);",
+                  "pm.test('the booking to confirm is listed', () => pm.expect(ids).to.include(Number(pm.collectionVariables.get('to_confirm_id'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Confirm a booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{to_confirm_id}}/confirm",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "{{to_confirm_id}}",
+                "confirm"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status confirmed', () => pm.expect(pm.response.json().status).to.eql('confirmed'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Check the guest in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/bookings/{{arriving_id}}/check-in",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "bookings",
+                "{{arriving_id}}",
+                "check-in"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('status checked_in', () => pm.expect(pm.response.json().status).to.eql('checked_in'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Occupancy report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/manager/reports/occupancy?hotel_id={{my_hotel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "manager",
+                "reports",
+                "occupancy"
+              ],
+              "query": [
+                {
+                  "key": "hotel_id",
+                  "value": "{{my_hotel_id}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the report schema', () => pm.response.to.have.jsonSchema({",
+                  "  type: 'object', required: ['date_from', 'date_to', 'hotel_id', 'items'],",
+                  "  properties: { items: { type: 'array' } },",
+                  "}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revenue report",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/manager/reports/revenue?hotel_id={{my_hotel_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "manager",
+                "reports",
+                "revenue"
+              ],
+              "query": [
+                {
+                  "key": "hotel_id",
+                  "value": "{{my_hotel_id}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('matches the report schema', () => pm.response.to.have.jsonSchema({",
+                  "  type: 'object', required: ['date_from', 'date_to', 'hotel_id', 'items', 'totals'],",
+                  "  properties: { items: { type: 'array' } },",
+                  "}));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 Mailbox",
+      "description": "Requirements 3.1: forgot password → code in the fake mailbox → new password.",
+      "item": [
+        {
+          "name": "Forgot my password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/password/forgot",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "forgot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The reset code is in my mailbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/mailbox",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "mailbox"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const mail = pm.response.json().items.find((m) => m.kind === 'password_reset');",
+                  "pm.test('a password reset email', () => pm.expect(mail).to.be.an('object'));",
+                  "pm.test('with a 6-digit code', () => pm.expect(mail.code).to.match(/^\\d{6}$/));",
+                  "pm.collectionVariables.set('reset_code', mail.code);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Set a new password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/password/reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "password",
+                "reset"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"code\": \"{{reset_code}}\",\n  \"new_password\": \"{{new_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sign in with the new password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{new_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a new access token', () => pm.expect(pm.response.json().access_token).to.be.a('string'));",
+                  "pm.collectionVariables.set('token', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 Cleanup",
+      "description": "Delete everything this run's user created (REQ-TEST-002).",
+      "item": [
+        {
+          "name": "Reset my data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Workspace",
+                "value": "{{cohort}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/test/reset",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "test",
+                "reset"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+# Runs your tests on every push and pull request against a fresh local copy of BooKing Lab.
+# The app comes from the images named in docker-compose.yml (an exact version, never "latest").
+#
+# Every run: a one-file Allure report (artifact "allure-report") and a pass/fail table in the
+# run's summary. Pushes to the main branch also publish the report with its history to GitHub
+# Pages, but only if Pages is on (Settings → Pages → Source: GitHub Actions); otherwise that
+# job is skipped. See "Publish your report as a portfolio link" in the README.
+# The postman job runs the course collection from postman/ with Newman.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_URL: http://localhost:8000
+      WEB_URL: http://localhost:5173
+      COHORT: DEMO
+      ALLURE_VERSION: 3.33.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start BooKing Lab
+        run: docker compose up -d --wait
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install the test dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install the Playwright browser
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run the tests
+        id: tests
+        continue-on-error: true # the report is built either way; the last step fails the job
+        run: pytest
+
+      # Allure 3 runs on Node.js (already on GitHub's runners); no Java needed.
+      - name: Build the report
+        if: always()
+        run: npx --yes allure@${{ env.ALLURE_VERSION }} generate allure-results
+
+      - name: Write the summary
+        if: always()
+        run: node scripts/report-summary.mjs
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report/index.html
+          if-no-files-found: ignore
+
+      - name: Keep the Allure results (for the Pages job)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results/
+          if-no-files-found: ignore
+
+      - name: BooKing Lab logs
+        if: steps.tests.outcome == 'failure'
+        run: docker compose logs --no-color
+
+      - name: Fail the job if a test failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
+
+  postman:
+    # The course Postman collection with Newman. To switch this job off, add a repository
+    # variable RUN_POSTMAN = false (Settings → Secrets and variables → Actions → Variables).
+    if: vars.RUN_POSTMAN != 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start BooKing Lab
+        run: docker compose up -d --wait
+
+      - name: Run the collection
+        run: >
+          npx --yes newman@6.2.3 run postman/booking-lab-course.postman_collection.json
+          -e postman/localhost.postman_environment.json --reporters cli
+
+      - name: BooKing Lab logs
+        if: failure()
+        run: docker compose logs --no-color
+
+  pages-check:
+    # Only pushes to the main branch publish; failed runs too, so the trend shows them.
+    if: always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      pages: read
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+      url: ${{ steps.check.outputs.url }}
+    steps:
+      - name: Is GitHub Pages on, with GitHub Actions as its source?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if info="$(gh api "repos/$GITHUB_REPOSITORY/pages" 2>/dev/null)" \
+             && [ "$(jq -r .build_type <<<"$info")" = workflow ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "url=$(jq -r .html_url <<<"$info")" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Report not published::GitHub Pages is off. To publish the report, open Settings → Pages and set Source to GitHub Actions."
+          fi
+
+  pages:
+    needs: [tests, pages-check]
+    if: always() && needs.pages-check.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    env:
+      ALLURE_VERSION: 3.33.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results
+
+      - name: Take the history of earlier runs from the published report
+        env:
+          SITE: ${{ needs.pages-check.outputs.url }}
+        run: |
+          mkdir -p allure-history
+          curl -fsSL "${SITE%/}/history.jsonl" -o allure-history/history.jsonl \
+            || { rm -f allure-history/history.jsonl; echo "No history yet: this is the first report."; }
+
+      - name: Build the report with its trend
+        run: |
+          npx --yes allure@${{ env.ALLURE_VERSION }} generate allure-results
+          cp allure-history/history.jsonl allure-report/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: allure-report
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

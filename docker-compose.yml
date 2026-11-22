@@ -1,0 +1,60 @@
+# BooKing Lab from the published images — no source code needed.
+#   docker compose up -d --wait        (in a test template, where this file is docker-compose.yml)
+# Website http://localhost:5173 · API http://localhost:8000/docs · Postgres localhost:5432
+# The version is pinned; set BOOKING_LAB_VERSION to run another release.
+# Everything here is for the local copy and CI only; the passwords below are not secrets.
+name: booking-lab-kit
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: booking
+      POSTGRES_PASSWORD: booking
+      POSTGRES_DB: booking
+    ports:
+      - "5432:5432"   # full SQL access for DBeaver/psql (SPEC §6)
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking -d booking"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    image: ghcr.io/tel-ran-edu/booking-lab-api:${BOOKING_LAB_VERSION:-1.0.0-rc.2}
+    environment:
+      DATABASE_URL: postgresql+psycopg://booking:booking@db:5432/booking
+      JWT_SECRET: ${JWT_SECRET:-local-dev-only-not-a-secret-0123456789}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin123!}
+      SEED_WORKSPACES: ${SEED_WORKSPACES:-DEMO QA01}
+      # 10 sign-ins per minute per IP, as in the cloud; raise it for long local test runs
+      RATE_LIMIT_LOGIN_PER_MINUTE: ${RATE_LIMIT_LOGIN_PER_MINUTE:-10}
+      CORS_ORIGINS: '["http://localhost:5173","http://127.0.0.1:5173"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  web:
+    image: ghcr.io/tel-ran-edu/booking-lab-web:${BOOKING_LAB_VERSION:-1.0.0-rc.2}
+    ports:
+      - "5173:5173"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5173/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  db-data:
