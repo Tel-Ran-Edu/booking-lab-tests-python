@@ -23,7 +23,7 @@ services:
       retries: 30
 
   api:
-    image: ghcr.io/tel-ran-edu/booking-lab-api:${BOOKING_LAB_VERSION:-1.0.0-rc.2}
+    image: ghcr.io/tel-ran-edu/booking-lab-api:${BOOKING_LAB_VERSION:-1.0.0-rc.3}
     environment:
       DATABASE_URL: postgresql+psycopg://booking:booking@db:5432/booking
       JWT_SECRET: ${JWT_SECRET:-local-dev-only-not-a-secret-0123456789}
@@ -44,7 +44,7 @@ services:
       retries: 40
 
   web:
-    image: ghcr.io/tel-ran-edu/booking-lab-web:${BOOKING_LAB_VERSION:-1.0.0-rc.2}
+    image: ghcr.io/tel-ran-edu/booking-lab-web:${BOOKING_LAB_VERSION:-1.0.0-rc.3}
     ports:
       - "5173:5173"
     healthcheck:

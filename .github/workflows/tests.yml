@@ -102,8 +102,11 @@ jobs:
         run: docker compose logs --no-color
 
   pages-check:
-    # Only pushes to the main branch publish; failed runs too, so the trend shows them.
-    if: always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    # Pushes to the main branch and manual runs on it publish; failed runs too, so the trend
+    # shows them. Pull requests never do.
+    if: >
+      always() && contains(fromJSON('["push", "workflow_dispatch"]'), github.event_name) &&
+      github.ref_name == github.event.repository.default_branch
     needs: tests
     runs-on: ubuntu-latest
     permissions:
