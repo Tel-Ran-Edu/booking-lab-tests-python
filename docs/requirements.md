@@ -39,7 +39,7 @@
 - **REQ-BOOK-002** Check-in is not earlier than today (in the hotel's time zone) and not later than 365 days ahead. Check-out is strictly after check-in. Length of stay 1–30 nights.
 - **REQ-BOOK-003** Guests: adults 1–room capacity, children 0–4; the total does not exceed capacity. A child is aged 0–17.
 - **REQ-BOOK-004** It is impossible to book more rooms than are free on any of the nights → 409 "No rooms available for the selected dates". Two simultaneous requests for the last room → exactly one succeeds.
-- **REQ-BOOK-005** Price: sum of nightly rates (prices may differ by day; Friday and Saturday +20%) − promo discount + 17% tax. Rounded to 0.01 (half up) on the total only. All prices are in euros (EUR), in every hotel.
+- **REQ-BOOK-005** Price: sum of nightly rates (prices may differ by day; Friday and Saturday +20%) − promo discount + 17% tax. Rounded to 0.01 (half up) on the total only. All prices are in euros (EUR), in every hotel. The server always computes the price itself; any total or price sent by the client is ignored.
 - **REQ-BOOK-006** Promo codes: percentage (1–50%) or fixed amount; validity period; minimum order total; usage limit; one promo code per booking. Code is case-insensitive. The total can never go below 0.
 - **REQ-BOOK-007** Statuses: `pending_payment` → `confirmed` → `checked_in` → `completed`; `pending_payment` and `confirmed` can go to `cancelled`; a manager can move `confirmed` → `rejected`. An invalid transition → 409.
 - **REQ-BOOK-008** A booking in `pending_payment` is cancelled automatically after 15 minutes without payment, and the room is released.
@@ -113,7 +113,7 @@ Base path `/api/v1`, JSON, authorization `Authorization: Bearer <access_token>`.
 | POST / PUT / PATCH / DELETE | `/hotels`, `/hotels/{id}` | hotel management (manager) | 201 / 200 / 200 / 204 |
 | CRUD | `/hotels/{id}/room-types`, `/room-types/{id}/rates` | rooms and rates (manager) | — |
 | POST | `/bookings/quote` | price calculation without creating a booking | 200 |
-| POST | `/bookings` | create a booking | 201 + `Location` |
+| POST | `/bookings` | create a booking (`quoted_total`, the total the client shows, is informational and ignored) | 201 + `Location` |
 | GET | `/bookings`, `/bookings/{id}` | my bookings / one booking | 200 |
 | PATCH | `/bookings/{id}` | change a booking | 200 |
 | POST | `/bookings/{id}/pay`, `/cancel`, `/confirm`, `/reject`, `/check-in`, `/check-out` | status transitions | 200 |
@@ -141,7 +141,7 @@ Base path `/api/v1`, JSON, authorization `Authorization: Bearer <access_token>`.
 - Every response carries an `X-Request-Id` header — students attach it to bug reports.
 - `POST /bookings` accepts an `Idempotency-Key` header: a repeat with the same key returns the same booking instead of creating a new one.
 - Updates of bookings and hotels support `ETag` / `If-Match`: a stale version → 412.
-- Rate limit: 300 requests per minute per user, 10 sign-in attempts per minute per IP; headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
+- Rate limit: 300 requests per minute per user, 100 sign-in attempts per minute per IP; headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `Retry-After`.
 - Dates in ISO 8601; money as a string with 2 decimals (`"1234.50"`) plus a currency code, to avoid float rounding errors.
 
 ## Templates

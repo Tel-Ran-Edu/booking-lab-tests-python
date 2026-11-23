@@ -186,9 +186,9 @@ is archived with each build as `allure-report/index.html`.
 
 ## Troubleshooting
 
-- **429 Too Many Requests on sign-in.** BooKing Lab allows 10 sign-ins per minute from one
+- **429 Too Many Requests on sign-in.** BooKing Lab allows 100 sign-ins per minute from one
   address, like the cloud copy. Wait a minute (the `Retry-After` header says how long), or give
-  the local copy a higher limit: `RATE_LIMIT_LOGIN_PER_MINUTE=100 docker compose up -d --wait`.
+  the local copy a higher limit: `RATE_LIMIT_LOGIN_PER_MINUTE=300 docker compose up -d --wait`.
 - **Port 5432, 8000 or 5173 is already in use.** Another program (or another copy of BooKing
   Lab) uses it. Stop it, or change the left side of the port in `docker-compose.yml`.
 - **"BooKing Lab is not ready".** The server is not up yet: see the cold start task above.
