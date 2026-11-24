@@ -84,6 +84,7 @@ docker-compose.yml        the local copy of BooKing Lab, an exact version
 postman/                  the course Postman collection and its environments
 jmeter/                   a JMeter load test plan for the local copy
 docs/requirements.md      the requirements, a test case and a bug report template
+docs/sniffing.md          reading HTTP traffic: DevTools, HTTP Toolkit, a phone, mitmproxy
 .github/workflows/        CI: starts BooKing Lab and runs pytest on every push; builds the report
 allurerc.mjs              Allure report settings
 scripts/report-summary.mjs   pass/fail table for the CI summary
@@ -112,6 +113,12 @@ Jenkinsfile               the same pipeline for Jenkins
 Every element on the website has a stable `data-testid`, for example `login-email` or
 `hotel-card-12-link`. Locate by it: in Selenium `[data-testid="login-email"]`, in Playwright
 `page.get_by_test_id("login-email")`. Texts and CSS classes may change; test ids do not.
+
+## Reading the traffic
+
+`docs/sniffing.md` shows how to watch and change the requests between the website (or a phone)
+and the API: Chrome DevTools, HTTP Toolkit, a phone over Wi-Fi and mitmproxy. Practise on the
+website's **UI lab → Sniffer** page (`/lab/sniffer`).
 
 ## Your first task: the cold start
 
